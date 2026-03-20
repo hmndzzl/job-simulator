@@ -1,171 +1,563 @@
 # Job Simulator — REST CRUD API
 
-## Descripción
+API REST con operaciones CRUD completas sobre un catálogo de productos, construida con Node.js/Express, PostgreSQL y servida con Nginx. Todo el entorno corre en Docker.
 
-Se requiere construir una API REST con operaciones CRUD completas, persistencia en base de datos relacional y entorno containerizado. El dominio del recurso queda a criterio del desarrollador.
+---
+## Hugo Méndez
+## Nivel entregado
 
-El sistema será consumido por un cliente frontend ya existente. La API debe cumplir el contrato definido en este documento de forma exacta. Cualquier desviación del contrato se considera un fallo de integración.
+**Nivel 3 — Senior**
+
+## Tabla de contenidos
+
+- [Requisitos](#requisitos)
+- [Inicialización](#inicialización)
+- [Servicios y puertos](#servicios-y-puertos)
+- [Configuración de entorno](#configuración-de-entorno)
+- [Estructura del proyecto](#estructura-del-proyecto)
+- [Recurso: products](#recurso-products)
+- [Endpoints](#endpoints)
+- [Códigos de respuesta y errores](#códigos-de-respuesta-y-errores)
+- [Ejemplos de uso](#ejemplos-de-uso)
 
 ---
 
-## Condiciones de trabajo
+## Requisitos
 
-Eres un desarrollador backend contratado para entregar un sistema funcional en un tiempo determinado. El pago se acredita únicamente si el sistema es entregado en tiempo y cumple el contrato en su totalidad.
-
-Las siguientes condiciones resultan en terminación del contrato sin compensación parcial:
-
-- El repositorio contiene archivos que no deben ser versionados (`node_modules`, `vendor`, `.env`, binarios, archivos de sistema operativo)
-
-- Entrega fuera del plazo establecido
-- El sistema no levanta con un único comando
-- Algún endpoint no responde o responde de forma incorrecta
-- Los códigos de respuesta HTTP no son los correctos según el estándar REST
-- Las validaciones no están implementadas
-- Los tipos de datos no son respetados
-- Las respuestas no son JSON
-- Almacenamiento en memoria en lugar de base de datos relacional
-- El API no interactua de forma correcta con el frontend.
-
-El nivel de contratación determina el máximo de compensación posible. No existe compensación parcial dentro de un nivel.
+- [Docker](https://docs.docker.com/get-docker/) y [Docker Compose](https://docs.docker.com/compose/) instalados
+- Puertos `8080`, `8088` y `5432` disponibles en el host
 
 ---
 
-## Contrato de la API
+## Inicialización
 
-### Estructura del recurso
+### 1. Clonar el repositorio
 
-El recurso expone los siguientes campos con nombres fijos:
+```bash
+git clone <url-del-repositorio>
+cd job-simulator
+```
 
-| Campo  | Tipo    | Restricciones              |
-| ------ | ------- | -------------------------- |
-| id     | integer | primary key, autoincrement |
-| campo1 | string  | requerido                  |
-| campo2 | string  | requerido                  |
-| campo3 | string  | requerido                  |
-| campo4 | integer | requerido                  |
-| campo5 | float   | requerido                  |
-| campo6 | boolean | requerido                  |
+### 2. Crear el archivo `.env`
 
-El dominio es libre. Los nombres internos en base de datos y lógica de negocio quedan a criterio del desarrollador.
+Copiar la plantilla incluida y completar las variables:
+
+```bash
+cp .env.example .env
+```
+
+El `.env.example` define las variables necesarias (ver [Configuración de entorno](#configuración-de-entorno)).
+
+### 3. Levantar la aplicación
+
+```bash
+docker-compose up
+```
+
+Docker:
+1. Inicia el contenedor de **PostgreSQL** y espera a que esté saludable
+2. Ejecuta `init.sql` automáticamente, creando la tabla `products`
+3. Inicia la **API** una vez que la base de datos está lista
+4. Inicia el servidor **Nginx** que sirve el frontend
+
+> Para correr en segundo plano: `docker-compose up -d`
+
+> Para detener y eliminar los contenedores: `docker-compose down`
+
+> Para eliminar también los datos persistidos: `docker-compose down -v`
+
+### Verificar que todo está arriba
+
+```bash
+curl http://localhost:8080/products
+# Respuesta esperada: []
+```
 
 ---
 
-### Endpoints
+## Servicios y puertos
 
-Se requiere implementar los métodos `GET`, `POST`, `PUT` y `DELETE`. El nombre del recurso en la ruta debe seguir las convenciones REST estándar.
-
----
-
-### Validaciones
-
-Todos los campos son requeridos. Los tipos deben ser respetados estrictamente: `campo4` es entero, `campo5` es decimal, `campo6` es booleano.
+| Servicio   | Puerto host | Puerto contenedor | URL de acceso              |
+|------------|-------------|-------------------|----------------------------|
+| API        | `8080`      | `3000`            | http://localhost:8080      |
+| Frontend   | `8088`      | `80`              | http://localhost:8088      |
+| PostgreSQL | `5432`      | `5432`            | `localhost:5432`           |
 
 ---
 
-### Códigos de respuesta
+## Configuración de entorno
 
-El uso correcto de códigos HTTP es parte del contrato con el cliente. Todas las respuestas son JSON.
+Variables definidas en `.env` (basado en `.env.example`):
+
+| Variable      | Descripción                              | Ejemplo       |
+|---------------|------------------------------------------|---------------|
+| `DB_HOST`     | Hostname del servicio PostgreSQL         | `db`          |
+| `DB_PORT`     | Puerto de PostgreSQL                     | `5432`        |
+| `DB_NAME`     | Nombre de la base de datos               | `jobsimulator`|
+| `DB_USER`     | Usuario de PostgreSQL                    | `user`        |
+| `DB_PASSWORD` | Contraseña de PostgreSQL                 | `password`    |
+| `APP_PORT`    | Puerto expuesto por la API en el host    | `8080`        |
+
+> El `.env` nunca debe commitearse. Está excluido por `.gitignore`.
+
+---
+
+## Estructura del proyecto
+
+```
+job-simulator/
+├── backend/
+│   ├── src/
+│   │   ├── config/
+│   │   │   └── db.js          # Pool de conexión a PostgreSQL
+│   │   ├── routes/
+│   │   │   └── products.js    # Rutas y controladores del recurso
+│   │   └── server.js          # Punto de entrada, configuración de Express
+│   ├── init.sql               # Script de inicialización del esquema
+│   ├── Dockerfile
+│   └── package.json
+├── frontend/
+│   ├── public/
+│   │   ├── js/
+│   │   │   ├── config.js      # URL de la API y nombre del recurso
+│   │   │   ├── api.js         # Módulo de comunicación con la API
+│   │   │   ├── index.js       # Controlador de listado
+│   │   │   ├── create.js      # Controlador de creación
+│   │   │   ├── edit.js        # Controlador de edición
+│   │   │   └── show.js        # Controlador de detalle
+│   │   ├── index.html         # Listado de productos
+│   │   ├── create.html        # Formulario de creación
+│   │   ├── edit.html          # Formulario de edición
+│   │   └── show.html          # Vista de detalle
+│   ├── nginx.conf
+│   └── Dockerfile
+├── resources/                 # Dockerfiles de referencia
+├── docker-compose.yml
+├── .env
+├── .env.example
+└── .gitignore
+```
+
+---
+
+## Recurso: products
+
+El recurso representa un catálogo de **productos**. La API expone el recurso bajo la ruta `/products`.
+
+### Esquema
+
+| Campo    | Tipo SQL        | Tipo JSON | Restricciones              | Significado   |
+|----------|-----------------|-----------|----------------------------|---------------|
+| `id`     | `SERIAL`        | `integer` | Primary key, autoincrement | ID del producto |
+| `campo1` | `VARCHAR(255)`  | `string`  | requerido, no vacío        | Nombre        |
+| `campo2` | `VARCHAR(255)`  | `string`  | requerido, no vacío        | Descripción   |
+| `campo3` | `VARCHAR(255)`  | `string`  | requerido, no vacío        | Categoría     |
+| `campo4` | `INTEGER`       | `integer` | requerido, entero          | Stock         |
+| `campo5` | `NUMERIC`       | `number`  | requerido, decimal         | Precio        |
+| `campo6` | `BOOLEAN`       | `boolean` | requerido                  | Disponible    |
+
+### Ejemplo de objeto
+
+```json
+{
+  "id": 1,
+  "campo1": "Laptop Pro",
+  "campo2": "Laptop de alto rendimiento",
+  "campo3": "Electrónica",
+  "campo4": 5,
+  "campo5": 999.99,
+  "campo6": true
+}
+```
+
+---
+
+## Endpoints
+
+Base URL: `http://localhost:8080`
+
+### Resumen
+
+| Método   | Ruta               | Descripción                         |
+|----------|--------------------|-------------------------------------|
+| `GET`    | `/products`        | Obtener todos los productos         |
+| `GET`    | `/products/:id`    | Obtener un producto por ID          |
+| `POST`   | `/products`        | Crear un producto nuevo             |
+| `PUT`    | `/products/:id`    | Reemplazar un producto completo     |
+| `PATCH`  | `/products/:id`    | Actualizar campos específicos       |
+| `DELETE` | `/products/:id`    | Eliminar un producto                |
+
+---
+
+### GET /products
+
+Retorna el listado completo de productos.
+
+**Request**
+```
+GET /products
+```
+
+**Response `200 OK`**
+```json
+[
+  {
+    "id": 1,
+    "campo1": "Laptop Pro",
+    "campo2": "Laptop de alto rendimiento",
+    "campo3": "Electrónica",
+    "campo4": 5,
+    "campo5": 999.99,
+    "campo6": true
+  },
+  {
+    "id": 2,
+    "campo1": "Teclado Mecánico",
+    "campo2": "Teclado con switches Cherry MX",
+    "campo3": "Periféricos",
+    "campo4": 20,
+    "campo5": 89.99,
+    "campo6": true
+  }
+]
+```
+
+> Retorna `[]` si no hay registros.
+
+---
+
+### GET /products/:id
+
+Retorna un único producto por su ID.
+
+**Request**
+```
+GET /products/1
+```
+
+**Response `200 OK`**
+```json
+{
+  "id": 1,
+  "campo1": "Laptop Pro",
+  "campo2": "Laptop de alto rendimiento",
+  "campo3": "Electrónica",
+  "campo4": 5,
+  "campo5": 999.99,
+  "campo6": true
+}
+```
+
+**Response `404 Not Found`**
+```json
+{ "error": "Registro no encontrado" }
+```
+
+---
+
+### POST /products
+
+Crea un nuevo producto. Todos los campos son requeridos.
+
+**Request**
+```
+POST /products
+Content-Type: application/json
+```
+
+**Body**
+```json
+{
+  "campo1": "Monitor 4K",
+  "campo2": "Monitor UHD de 27 pulgadas",
+  "campo3": "Electrónica",
+  "campo4": 10,
+  "campo5": 349.99,
+  "campo6": true
+}
+```
+
+**Response `201 Created`**
+```json
+{
+  "id": 3,
+  "campo1": "Monitor 4K",
+  "campo2": "Monitor UHD de 27 pulgadas",
+  "campo3": "Electrónica",
+  "campo4": 10,
+  "campo5": 349.99,
+  "campo6": true
+}
+```
+
+**Response `400 Bad Request`** (datos inválidos o incompletos)
+```json
+{ "error": "Datos inválidos o incompletos. Revisa los tipos de datos." }
+```
+
+---
+
+### PUT /products/:id
+
+Reemplaza completamente un producto existente. Todos los campos son requeridos.
+
+**Request**
+```
+PUT /products/3
+Content-Type: application/json
+```
+
+**Body**
+```json
+{
+  "campo1": "Monitor 4K Pro",
+  "campo2": "Monitor UHD de 32 pulgadas con HDR",
+  "campo3": "Electrónica",
+  "campo4": 8,
+  "campo5": 499.99,
+  "campo6": true
+}
+```
+
+**Response `200 OK`**
+```json
+{
+  "id": 3,
+  "campo1": "Monitor 4K Pro",
+  "campo2": "Monitor UHD de 32 pulgadas con HDR",
+  "campo3": "Electrónica",
+  "campo4": 8,
+  "campo5": 499.99,
+  "campo6": true
+}
+```
+
+**Response `400 Bad Request`**
+```json
+{ "error": "Datos inválidos. PUT requiere todos los campos." }
+```
+
+**Response `404 Not Found`**
+```json
+{ "error": "Registro no encontrado" }
+```
+
+---
+
+### PATCH /products/:id
+
+Actualiza solo los campos enviados. Los campos omitidos conservan su valor original.
+
+**Request**
+```
+PATCH /products/3
+Content-Type: application/json
+```
+
+**Body** (solo los campos a modificar)
+```json
+{
+  "campo5": 459.99,
+  "campo6": false
+}
+```
+
+**Response `200 OK`**
+```json
+{
+  "id": 3,
+  "campo1": "Monitor 4K Pro",
+  "campo2": "Monitor UHD de 32 pulgadas con HDR",
+  "campo3": "Electrónica",
+  "campo4": 8,
+  "campo5": 459.99,
+  "campo6": false
+}
+```
+
+**Response `400 Bad Request`** (body vacío)
+```json
+{ "error": "No se enviaron campos para actualizar" }
+```
+
+**Response `400 Bad Request`** (campos no permitidos)
+```json
+{ "error": "Campos no permitidos" }
+```
+
+**Response `404 Not Found`**
+```json
+{ "error": "Registro no encontrado" }
+```
+
+---
+
+### DELETE /products/:id
+
+Elimina un producto. No retorna cuerpo en caso de éxito.
+
+**Request**
+```
+DELETE /products/3
+```
+
+**Response `204 No Content`**
+```
+(sin cuerpo)
+```
+
+**Response `404 Not Found`**
+```json
+{ "error": "Registro no encontrado" }
+```
+
+---
+
+## Códigos de respuesta y errores
+
+### Códigos HTTP utilizados
+
+| Código | Significado      | Cuándo se usa                                              |
+|--------|------------------|------------------------------------------------------------|
+| `200`  | OK               | GET por ID exitoso, PUT y PATCH exitosos                   |
+| `201`  | Created          | POST exitoso                                               |
+| `204`  | No Content       | DELETE exitoso                                             |
+| `400`  | Bad Request      | Validación fallida, tipos incorrectos, campos faltantes    |
+| `404`  | Not Found        | El recurso solicitado no existe                            |
+| `500`  | Internal Server Error | Error inesperado del servidor o base de datos         |
+
+### Mensajes de error por endpoint
+
+| Endpoint       | Código | Mensaje                                                      |
+|----------------|--------|--------------------------------------------------------------|
+| GET /:id       | `404`  | `"Registro no encontrado"`                                   |
+| GET /:id       | `500`  | `"Error interno del servidor"`                               |
+| POST /         | `400`  | `"Datos inválidos o incompletos. Revisa los tipos de datos."`|
+| POST /         | `500`  | `"Error al insertar en la base de datos"`                    |
+| PUT /:id       | `400`  | `"Datos inválidos. PUT requiere todos los campos."`          |
+| PUT /:id       | `404`  | `"Registro no encontrado"`                                   |
+| PUT /:id       | `500`  | `"Error al actualizar"`                                      |
+| PATCH /:id     | `400`  | `"No se enviaron campos para actualizar"`                    |
+| PATCH /:id     | `400`  | `"Campos no permitidos"`                                     |
+| PATCH /:id     | `404`  | `"Registro no encontrado"`                                   |
+| PATCH /:id     | `500`  | `"Error al actualizar parcialmente"`                         |
+| DELETE /:id    | `404`  | `"Registro no encontrado"`                                   |
+| DELETE /:id    | `500`  | `"Error al eliminar"`                                        |
+
+### Reglas de validación
+
+- Todos los campos (`campo1`–`campo6`) son **requeridos** en POST y PUT
+- `campo1`, `campo2`, `campo3`: deben ser strings no vacíos
+- `campo4`: debe ser un **entero** estricto (`Number.isInteger`)
+- `campo5`: debe ser un **número** (entero o decimal)
+- `campo6`: debe ser un **booleano** (`true` o `false`)
+- En PATCH: solo se aceptan los campos `campo1`–`campo6`; cualquier otra clave resulta en `400`
+
+---
+
+## Ejemplos de uso
+
+### Con cURL
+
+**Listar todos los productos**
+```bash
+curl http://localhost:8080/products
+```
+
+**Obtener un producto por ID**
+```bash
+curl http://localhost:8080/products/1
+```
+
+**Crear un producto**
+```bash
+curl -X POST http://localhost:8080/products \
+  -H "Content-Type: application/json" \
+  -d '{
+    "campo1": "Auriculares Bluetooth",
+    "campo2": "Auriculares inalámbricos con cancelación de ruido",
+    "campo3": "Audio",
+    "campo4": 15,
+    "campo5": 129.99,
+    "campo6": true
+  }'
+```
+
+**Reemplazar un producto completo**
+```bash
+curl -X PUT http://localhost:8080/products/1 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "campo1": "Auriculares Bluetooth Pro",
+    "campo2": "Auriculares premium con 40h de batería",
+    "campo3": "Audio",
+    "campo4": 10,
+    "campo5": 179.99,
+    "campo6": true
+  }'
+```
+
+**Actualizar solo el precio y la disponibilidad**
+```bash
+curl -X PATCH http://localhost:8080/products/1 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "campo5": 159.99,
+    "campo6": false
+  }'
+```
+
+**Eliminar un producto**
+```bash
+curl -X DELETE http://localhost:8080/products/1
+```
+
+---
+
+### Con JavaScript (fetch)
+
+**Crear un producto**
+```javascript
+const response = await fetch("http://localhost:8080/products", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    campo1: "Mouse Inalámbrico",
+    campo2: "Mouse ergonómico con DPI ajustable",
+    campo3: "Periféricos",
+    campo4: 30,
+    campo5: 45.99,
+    campo6: true,
+  }),
+});
+
+const producto = await response.json();
+console.log(producto); // { id: 4, campo1: "Mouse Inalámbrico", ... }
+```
+
+**Actualización parcial**
+```javascript
+const response = await fetch("http://localhost:8080/products/4", {
+  method: "PATCH",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ campo4: 25 }),
+});
+
+const actualizado = await response.json();
+console.log(actualizado.campo4); // 25
+```
 
 ---
 
 ## Stack
 
-- Lenguaje: Javascript, PHP o Rust — no se aceptan Go ni Python
-- Base de datos: relacional, sin almacenamiento en memoria
-- Containerización: Docker obligatorio
-
-En la carpeta `resources/` se incluyen Dockerfiles de referencia para cada lenguaje y base de datos, y un `.env.example`.
-
----
-
-## Niveles de contratación
-
-La evaluación es **pasa o no pasa**. Indicar el nivel seleccionado al momento de la entrega.
+| Componente | Tecnología          |
+|------------|---------------------|
+| API        | Node.js 20, Express |
+| Base de datos | PostgreSQL 16    |
+| Frontend   | HTML, Tailwind CSS, Vanilla JS |
+| Servidor web | Nginx Alpine      |
+| Contenedores | Docker, Docker Compose |
 
 ---
 
-### Nivel 1 — Junior `(máximo 70/100)`
-
-**Base de datos:** SQLite
-
-**Infraestructura:** `docker-compose.yml` con un único servicio. La base de datos corre embebida dentro del mismo contenedor que la aplicación. `docker-compose up` debe levantar el sistema completo y funcional sin intervención manual.
-
-**Requisitos:**
-- Los cinco endpoints funcionan correctamente contra la base de datos
-- Todas las validaciones están implementadas y retornan los códigos HTTP correspondientes
-- La base de datos persiste los datos correctamente entre operaciones
-- `Dockerfile` y `docker-compose.yml` presentes y funcionales
-
----
-
-### Nivel 2 — Mid `(máximo 85/100)`
-
-**Base de datos:** PostgreSQL
-
-**Infraestructura:** `docker-compose.yml` con dos servicios independientes: aplicación y base de datos. La aplicación debe conectarse a PostgreSQL usando variables de entorno. Un único `docker-compose up` levanta el sistema completo y funcional.
-
-**Requisitos adicionales al Nivel 1:**
-- Archivo `.env` con todas las variables de configuración necesarias
-- Sin credenciales, puertos ni strings de conexión hardcodeados en el código
-- La aplicación maneja correctamente los errores de conexión a la base de datos
-- El servicio de la aplicación no inicia hasta que PostgreSQL esté disponible
-
----
-
-### Nivel 3 — Senior `(máximo 100/100)`
-
-**Base de datos:** PostgreSQL
-
-**Infraestructura:** igual que Nivel 2.
-
-**Requisitos adicionales al Nivel 2:**
-- Endpoint `PATCH` para actualizaciones parciales: solo se modifican los campos presentes en el body, el resto permanece sin cambios
-- `.env.example` en el repositorio con todas las variables necesarias documentadas, sin valores reales
-- `.gitignore` que excluya `node_modules`, `.env`, y archivos de sistema operativo
-- Script SQL de inicialización de esquema ejecutado automáticamente por Docker al primer arranque
-- Estructura de proyecto con separación clara de responsabilidades: configuración de base de datos, definición de rutas y punto de entrada en archivos distintos
-- Historial de commits que refleje un proceso de desarrollo incremental — no se acepta un único commit con todo el trabajo
-
----
-
-## Bonus
-
-Los puntos bonus se suman sobre la nota del nivel entregado. Cada bonus se evalúa de forma independiente.
-
-### Integración full stack `(+10 puntos)`
-
-Integrar el frontend provisto en el mismo `docker-compose.yml` que la API.
-
-Condiciones:
-- Un único `docker-compose.yml` levanta ambos servicios
-- El frontend consume la API sin configuración manual posterior al `docker-compose up`
-- Ambos servicios operativos con un solo comando
-
-### Personalización del frontend `(+5 puntos)`
-
-Adaptar el frontend para que refleje el dominio elegido: etiquetas en el idioma correcto, nombres de campos legibles, y cualquier ajuste visual que mejore la experiencia del usuario final.
-
-Condiciones:
-- El frontend no debe mostrar `campo1`, `campo2`, etc. — deben verse los nombres reales del dominio
-- Los cambios deben ser coherentes con el recurso implementado en la API
-- Aplica únicamente si el bonus de integración también fue completado
-
----
-
-## Configuración del frontend
-
-El frontend provisto requiere dos valores en `public/js/config.js`:
-
-```js
-window.API_URL = "http://localhost:8080"; // URL base de tu API
-window.RESOURCE = "products";             // Nombre del recurso en tu API
-```
-
-`RESOURCE` debe coincidir exactamente con el nombre que usaste en las rutas de tu API.
-
----
-
-## Entrega
-
-- Repositorio en GitHub con visibilidad pública
-- El sistema levanta con un único comando
